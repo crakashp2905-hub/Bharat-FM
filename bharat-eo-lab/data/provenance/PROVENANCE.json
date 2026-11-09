@@ -1,0 +1,253 @@
+{
+  "dataset": "bharat-eo-chips-dsv2-sp",
+  "n_chips_manifest": 2107,
+  "n_chips_on_disk": 2250,
+  "manifest_md5": "0b2c019e5a8135e02416596b03cae506",
+  "split_type": "spatial_block_1.0deg_buf25.0km",
+  "splits": {
+    "train": 1419,
+    "val": 347,
+    "test": 341
+  },
+  "min_dist_km": {
+    "train_val": 25.027113377084277,
+    "train_test": 25.14446649708735
+  },
+  "chip_spec": {
+    "px": 224,
+    "gsd_m": 10,
+    "img_bands": 17,
+    "aux_bands": 14,
+    "aux_layout": {
+      "dw": 0,
+      "esri": 1,
+      "dwp0": 2,
+      "wc_crop": 11,
+      "conf": 12,
+      "zone": 13
+    },
+    "conf_definition": "1 + [WC==DW] + [WC==ESRI], capped at 3; mangrove/moss (WC classes 9,10) forced to 3"
+  },
+  "sources": [
+    {
+      "role": "primary label",
+      "name": "ESA WorldCover v200 (2021)",
+      "asset": "ESA/WorldCover/v200",
+      "licence": "CC BY 4.0",
+      "remap": "10,20,...,100 -> 0..10 (see config), 255=nodata"
+    },
+    {
+      "role": "agreement source / soft target",
+      "name": "Dynamic World v1 (Jun-Nov mode label, mean probabilities)",
+      "asset": "GOOGLE/DYNAMICWORLD/V1",
+      "licence": "CC BY 4.0",
+      "remap": "DW class -> our class via DW_TO_IDX=[7,0,2,8,3,1,4,5,6]"
+    },
+    {
+      "role": "agreement source",
+      "name": "Esri/Impact Observatory 10 m LULC time series (community asset)",
+      "asset": "projects/sat-io/open-datasets/landcover/ESRI_Global-LULC_10m_TS",
+      "licence": "CC BY 4.0 (check asset page)",
+      "remap": "ESRI_FROM=[1,2,4,5,7,8,9,11] -> ESRI_TO=[7,0,8,3,4,5,6,2]"
+    },
+    {
+      "role": "auxiliary feature",
+      "name": "ESA WorldCereal 2021 temporary-crops model",
+      "asset": "ESA/WorldCereal/2021/MODELS/v100",
+      "licence": "CC BY 4.0",
+      "remap": "classification>0 -> 1"
+    },
+    {
+      "role": "input (optical)",
+      "name": "Sentinel-2 SR Harmonized, SCL-masked mosaic",
+      "asset": "COPERNICUS/S2_SR_HARMONIZED",
+      "licence": "Copernicus open data"
+    },
+    {
+      "role": "input (SAR)",
+      "name": "Sentinel-1 GRD IW VV/VH mosaic (x100, int16)",
+      "asset": "COPERNICUS/S1_GRD",
+      "licence": "Copernicus open data"
+    },
+    {
+      "role": "input (terrain)",
+      "name": "SRTM 30 m elevation/slope/aspect",
+      "asset": "USGS/SRTMGL1_003",
+      "licence": "public domain"
+    },
+    {
+      "role": "input (climate)",
+      "name": "WorldClim v1 bio1/bio12",
+      "asset": "WORLDCLIM/V1/BIO",
+      "licence": "CC BY-SA 4.0 (check)"
+    },
+    {
+      "role": "input (lights)",
+      "name": "VIIRS DNB annual nighttime lights v21",
+      "asset": "NOAA/VIIRS/DNB/ANNUAL_V21",
+      "licence": "public (NOAA/EOG terms)"
+    },
+    {
+      "role": "independent reference (not in chips)",
+      "name": "street-view expert crop annotations (297 pts: 239 crop, 58 other)",
+      "asset": "data/bench_v1/t2_fieldtruth_india.csv (origin: WorldCereal reference data, Zenodo 7825628)",
+      "licence": "CC BY 4.0 (verify on the Zenodo record before release)"
+    }
+  ],
+  "evidence_levels": {
+    "L0": "single-source: ESA WorldCover label only (a model product)",
+    "L1": "multi-source: >=2 of {WorldCover, Dynamic World, ESRI} agree (conf>=2). Still model products.",
+    "L2": "triple agreement: all three agree (conf==3) AND the class is not force-confident (mangrove/moss are set to conf=3 by construction, so they never reach L2).",
+    "L3": "independent expert reference (street-view annotations / field data). Currently covers NO pixel of any released chip: the 297 reference points lie >=2.4 km from every chip centre."
+  },
+  "independent_reference": {
+    "audit": {
+      "n": 297,
+      "n_crop": 239,
+      "n_other": 58,
+      "worldcover_cropland_recall": 0.899581589958159,
+      "worldcover_cropland_on_expert_other": 0.8793103448275862,
+      "note": "point-level audit of the label PRODUCT against expert annotations; not a model score"
+    },
+    "points_inside_any_chip": 0,
+    "nearest_point_to_chip_km": 2.456
+  },
+  "class_support": {
+    "train/tree": {
+      "chips": 1311,
+      "px": 26349561
+    },
+    "train/shrub": {
+      "chips": 738,
+      "px": 2355068
+    },
+    "train/grass": {
+      "chips": 1376,
+      "px": 9955834
+    },
+    "train/crop": {
+      "chips": 1165,
+      "px": 23727329
+    },
+    "train/built": {
+      "chips": 1001,
+      "px": 1073821
+    },
+    "train/bare": {
+      "chips": 1093,
+      "px": 3806612
+    },
+    "train/snow": {
+      "chips": 111,
+      "px": 1601754
+    },
+    "train/water": {
+      "chips": 635,
+      "px": 1256988
+    },
+    "train/wetland": {
+      "chips": 61,
+      "px": 16818
+    },
+    "train/mangrove": {
+      "chips": 2,
+      "px": 24453
+    },
+    "train/moss": {
+      "chips": 127,
+      "px": 1031506
+    },
+    "val/tree": {
+      "chips": 276,
+      "px": 5767608
+    },
+    "val/shrub": {
+      "chips": 143,
+      "px": 532942
+    },
+    "val/grass": {
+      "chips": 311,
+      "px": 2046062
+    },
+    "val/crop": {
+      "chips": 249,
+      "px": 4795412
+    },
+    "val/built": {
+      "chips": 190,
+      "px": 186830
+    },
+    "val/bare": {
+      "chips": 258,
+      "px": 2229652
+    },
+    "val/snow": {
+      "chips": 67,
+      "px": 1331213
+    },
+    "val/water": {
+      "chips": 161,
+      "px": 155237
+    },
+    "val/wetland": {
+      "chips": 8,
+      "px": 52079
+    },
+    "val/mangrove": {
+      "chips": 3,
+      "px": 44336
+    },
+    "val/moss": {
+      "chips": 63,
+      "px": 269701
+    },
+    "test/tree": {
+      "chips": 275,
+      "px": 6826755
+    },
+    "test/shrub": {
+      "chips": 115,
+      "px": 351185
+    },
+    "test/grass": {
+      "chips": 310,
+      "px": 1606109
+    },
+    "test/crop": {
+      "chips": 234,
+      "px": 4020822
+    },
+    "test/built": {
+      "chips": 199,
+      "px": 195963
+    },
+    "test/bare": {
+      "chips": 249,
+      "px": 2752081
+    },
+    "test/snow": {
+      "chips": 75,
+      "px": 703899
+    },
+    "test/water": {
+      "chips": 188,
+      "px": 216270
+    },
+    "test/wetland": {
+      "chips": 23,
+      "px": 12984
+    },
+    "test/mangrove": {
+      "chips": 2,
+      "px": 10147
+    },
+    "test/moss": {
+      "chips": 80,
+      "px": 413801
+    }
+  },
+  "exporter": "src/export_dataset_v2.py",
+  "exporter_md5": "c26c62785f152afc56eae280f07f5b47",
+  "split_code": "src/finalize_dsv2_spatial.py",
+  "split_code_md5": "3c203940f59fded1002be9d96200e2a0"
+}
