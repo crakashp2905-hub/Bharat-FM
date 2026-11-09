@@ -1,317 +1,299 @@
-# When Do Earth-Observation Foundation Models Actually Help? A Stratified, Ground-Truth-Anchored Benchmark over India
+# Bharat-EO-Bench: A Spatially-Disjoint India Land-Cover Benchmark, and What a Foundation Model Actually Buys You on Weak Labels
 
-*Preprint draft — Bharat-EO-Bench v1.0.0. Author: (you). Correspondence: crakashp2905@gmail.com.*
+*Preprint draft v2 — supersedes the v1 draft, whose land-cover numbers came from a non-spatial split and are withdrawn (§7). Correspondence: crakashp2905@gmail.com.*
 
 ---
 
 ## Abstract
 
-Earth-observation (EO) foundation models (FMs) such as Prithvi-EO-2.0 are widely
-assumed to outperform generic (ImageNet-pretrained) backbones on satellite tasks,
-yet head-to-head evidence on a **rigorously stratified, ground-truth-anchored**
-benchmark is scarce — especially for India, a monsoon-driven, smallholder,
-sensor-sovereign geography under-represented in existing suites. We introduce
-**Bharat-EO-Bench v1**, a versioned benchmark over India with (i) **15
-agro-climatic zones** (rainfall × elevation), (ii) **geographically-disjoint
-70/15/15 splits** that eliminate spatial leakage, (iii) **zone × class stratified
-draws**, and (iv) **real in-situ ground truth** — 2,599 Central Ground Water Board
-(CGWB) wells and 239 WorldCereal expert-validated crop points. On this benchmark we
-run **decoder-controlled** encoder comparisons and report a clear — but easily
-confounded — result: **an EO foundation model beats a generic ImageNet backbone on
-India land cover whenever the decoder is held constant, and the advantage is masked
-only by a mismatched decoder.** With a *mismatched* decoder (Prithvi + a simple head
-vs an ImageNet ResNet-U-Net with a strong multi-scale skip decoder), full fine-tuning
-looks like a **tie** (macro-F1 0.593 vs 0.582–0.589; the ranking flips across seeds).
-Hold the decoder fixed — the **same** UPerNet-on-ViT head on the **same** ViT
-architecture — and EO pretraining wins in **both** regimes: **+0.042 macro-F1** under
-full fine-tuning (**0.663** vs 0.621) and **+0.08–0.09** under a frozen-encoder probe
-(Prithvi-600M **0.574 ± 0.010**, 300M **0.559 ± 0.023** vs ImageNet ViT-B **0.483 ±
-0.005**, ~8× the seed variance). The decoder-matched model also lifts Prithvi-300 from
-0.593 to **0.663 macro-F1 / 0.527 mIoU**. We explain the earlier "tie" mechanistically:
-a strong *mismatched* decoder plus full fine-tuning *compensates* for a weaker encoder,
-hiding the representation gap the controlled comparison exposes. All experiments run on
-free/commodity compute (a 16 GB laptop as control plane + Google Earth Engine + a single
-Kaggle T4 GPU), and the benchmark, splits, and evaluation harness are released with
-content hashes for reproducibility.
+Earth-observation foundation models (FMs) are widely assumed to help on India-scale land
+cover, but published gains are routinely measured on random splits and against labels that
+are themselves model outputs. We build **Bharat-EO-Bench**, a dense land-cover
+segmentation benchmark over India with 11 classes, 15 agro-climatic zones, and a
+**spatial-block split** (1° blocks; train chips within 25 km of any evaluation chip are
+dropped; minimum train-to-evaluation distance ≥ 25 km). Labels are consensus products
+(Dynamic World, ESRI, WorldCover/WorldCereal), so we additionally score every model on the
+**confident pixels** (≥ 2 label sources agree; 84% of evaluation pixels) and on **all
+pixels**, and we report that the choice of evaluation set alone moves mIoU by 0.06–0.08.
+Using Prithvi-EO-2.0 300M with a UPerNet head, all numbers mean-of-two-seeds, we find:
+(i) **EO pretraining matters a great deal** — fine-tuned pretrained 0.448 mIoU vs
+random-initialisation 0.343 (confident pixels; +0.105), and vs a frozen encoder 0.402
+(+0.046); on all pixels 0.388 vs 0.300 and 0.343; seed-to-seed spread is < 0.005 in every
+arm. (ii) **A bundle of four training additions ("v3": auxiliary-band stem, confidence
+masking, soft labels, copy-paste rare-class augmentation) does not reliably help**: +0.017 mIoU on confident pixels but −0.029 on all pixels versus the plain
+fine-tuned baseline, and a leave-one-out ablation attributes the confident-pixel gain to
+confidence masking, which trades away accuracy on the ambiguous 16% of pixels. (iii)
+**Two of eleven classes (wetland, mangrove) are effectively unmeasurable** in the current
+data (IoU ≈ 0 in every arm; ~1 chip each). We therefore position this release as a
+*protocol and negative-results* contribution: a leakage-controlled split, an evaluation
+protocol that exposes label-noise confounds, and a measured value for pretraining — not a
+new method.
 
 ---
 
 ## 1. Introduction
 
-Foundation models pretrained on large unlabeled satellite corpora (Prithvi-EO-2.0,
-Clay, SatMAE, Scale-MAE, DOFA, Galileo, TerraMind, AlphaEarth Foundations) promise
-transferable representations for downstream EO tasks. The prevailing narrative is that
-these EO-specific FMs should beat generic ImageNet-pretrained backbones, because their
-pretraining sees the right spectra, scales, and temporal structure. However, three
-methodological gaps make many reported wins hard to trust:
+Three methodological gaps make many FM-for-EO claims hard to trust: **weak splits** (random
+chip or pixel splits leak spatially autocorrelated neighbours), **confounded comparisons**
+(FM-plus-one-decoder against a different architecture and decoder), and **weak labels**
+(the reference is itself a model product, so a score is agreement between models). India
+sharpens all three — monsoon-phased phenology, smallholder fields, heavy growing-season
+cloud, and a data-sovereignty motive for domestic models.
 
-1. **Weak splits.** Random pixel/chip splits leak spatially adjacent, autocorrelated
-   samples between train and test, inflating scores.
-2. **Confounded comparisons.** "FM vs baseline" often compares an FM encoder + one
-   decoder against a different architecture + a *different* decoder, so the encoder
-   effect cannot be isolated from the decoder effect.
-3. **No ground truth.** Labels are frequently themselves model outputs (e.g. one
-   global land-cover product), so the benchmark measures agreement between two models,
-   not agreement with reality.
-
-India sharpens all three. It is monsoon-phased (the same pixel looks agricultural,
-bare, or flooded across a year), dominated by **smallholder** fields below the
-resolution many FMs were tuned for, cloud-heavy in the growing season, and a
-**data-sovereignty** priority (National Geospatial Policy 2022). If EO FMs help
-anywhere, they should help here — and if we cannot show *when* they help under rigorous
-conditions, sovereign-FM investment rests on faith.
+This paper does three things. It provides a split whose leakage can be quoted as a
+distance, not asserted. It shows how much an evaluation-set choice under label noise
+changes conclusions — including one reversal we made and retracted ourselves (§7). And it
+measures, on that split, what pretraining, fine-tuning and a set of commonly proposed
+training additions are each worth.
 
 **Contributions.**
-- **Bharat-EO-Bench v1**, a versioned, stratified, spatially-disjoint India benchmark
-  with real in-situ ground truth and a variance-reporting evaluation harness.
-- A **decoder-controlled** encoder comparison (both a frozen-probe and a
-  decoder-matched full-fine-tune protocol) that isolates representation quality.
-- The empirical finding that **EO pretraining beats ImageNet on India land cover in
-  both regimes once the decoder is matched** (+0.042 fine-tuned, +0.08 frozen), and a
-  demonstration that a *mismatched* decoder manufactures a spurious "tie" — a direct
-  instance of the confounded-comparison pitfall (gap #2 above).
-- A demonstration that all of this — including a strong 0.663-macro-F1 India
-  land-cover model — is achievable on **free/commodity compute**.
+1. A spatial-block, zone-stratified India land-cover split with a reported minimum
+   train-to-evaluation distance, and chip-level label-agreement metadata.
+2. A two-view evaluation protocol (confident pixels / all pixels) and an account of the
+   eval-mask confound it removes.
+3. A controlled value-of-pretraining measurement: pretrained fine-tune vs random-init vs
+   frozen, same architecture, same head, same split, two seeds.
+4. A leave-one-out ablation of four training additions, mostly null on this benchmark.
+5. An honest rare-class finding: wetland and mangrove cannot be evaluated from this data.
 
 ---
 
-## 2. Bharat-EO-Bench v1
+## 2. Benchmark
 
-### 2.1 Agro-climatic zonation
-We partition India into **15 agro-climatic zones** as the cross product of a rainfall
-axis (WorldClim BIO12, terciled) and an elevation axis (SRTM, terciled), yielding
-arid/semi-arid/sub-humid/humid × lowland/upland/highland cells. Zones were verified to
-recover recognizable regions (Thar arid lowland, Gangetic sub-humid plain, Himalayan
-highland). Zonation is the stratification key for every task, so that rare
-zone-class combinations (e.g. high-Himalaya snow, coastal mangrove) are represented in
-both train and test rather than starved by chance.
+### 2.1 Data
+Chips are 224×224 with 17 input bands: 6 Sentinel-2 optical bands (fed to the ViT patch
+embedding) and 11 auxiliary bands (fed to a separate stem), exported with Google Earth
+Engine. Labels are 11 classes — tree, shrub, grass, crop, built, bare, snow, water,
+wetland, mangrove, moss — with 255 as ignore. Sampling is stratified over **15
+agro-climatic zones** (rainfall × elevation terciles), 150 chips per zone target, with
+additional targeted sampling for rare classes.
 
-### 2.2 Tasks
-- **T1 — Land-cover segmentation** (dense, per-pixel). 5,271 unique 224×224 **8-band**
-  chips (6 Sentinel-2 optical: B/G/R/NIR/SWIR1/SWIR2, + 2 Sentinel-1 SAR: VV/VH),
-  ESA WorldCover labels remapped to 11 classes (255 = ignore). Split **3,741 / 724 /
-  806** train/val/test, geographically disjoint.
-- **T2 — Land-cover representation** (point-wise). 5,332 points, 15 zones × 11 classes,
-  each carrying a 4-season time series (NDVI/VV/VH across rabi/zaid/kharif/post-monsoon)
-  and the 64-d AlphaEarth annual embedding. Released as versioned Parquet +
-  manifest.json + SHA-256 (`bffd5fbc`).
-- **T3 — Groundwater** (regression vs in-situ). GRACE/GRACE-FO terrestrial-water-storage
-  trends over NW India, anchored to CGWB wells (below).
+### 2.2 Spatial split
+Chips are bucketed into 1°×1° blocks; whole blocks are assigned to train/val/test. Train
+chips within 25 km of any val/test chip are dropped (never from evaluation, so the
+evaluation set is intact and leakage is one-directional). The minimum train-to-evaluation
+distance is verified ≥ 25 km, and the build asserts the split type and refuses to run
+otherwise. The code is `src/finalize_dsv2_spatial.py`; a coordinate-less chip set can only
+be split at chip level and is flagged `noncoord` and excluded from every number here.
 
-### 2.3 Ground truth (the credibility layer)
-- **Groundwater (T3):** the India-WRIS portal was unreachable; we instead pulled CGWB
-  depth-to-water-level via the India Data Portal CKAN datastore API (22,965 wells,
-  quarterly since 1969). For 2,599 NW-India wells we computed the per-well water-table
-  trend and correlated it with the co-located GRACE storage trend: **Pearson r = −0.284,
-  p = 1.4 × 10⁻⁴⁹** — negative and highly significant, i.e. *falling water tables track
-  satellite-measured storage loss.* In-situ reality agrees with the satellite signal.
-- **Land cover (T2):** we validated ESA WorldCover against **239 WorldCereal
-  expert-validated India crop points** (Zenodo 7825628): **90.0% agreement** as
-  cropland (residual disagreement is mostly orchards labeled tree cover). This is a
-  *reference* comparison, not model-vs-model.
-- **Cross-product anchor:** WorldCover vs Dynamic World agree on 66.1% of pixels
-  (built 90 / tree 84 / water 80; shrub↔grass ~40, the known ambiguous pair), quantifying
-  label noise so downstream scores are read against it.
+### 2.3 Label confidence
+Aux band 12 stores the number of label sources that agree with the assigned class. A pixel
+is **confident** if ≥ 2 sources agree (`CONF_MIN=2`). 84.0% of evaluation pixels are
+confident. Class composition differs sharply between views (Table 1): confidence removes
+79% of shrub and 96% of wetland pixels, which is where the two views diverge.
 
-### 2.4 Evaluation harness
-Every score is reported with uncertainty: **bootstrap 95% CIs** on the fixed test set
-and **5-fold spatial cross-validation** mean ± std. For the T2 baseline
-(AlphaEarth + time-series + XGBoost): fixed-test OA **0.785 [0.756, 0.815]**, macro-F1
-**0.718 [0.634, 0.805]**; 5-fold spatial OA **0.780 ± 0.006**, macro-F1 **0.760 ± 0.018**.
+**Table 1 — evaluation pixels per class (all / confident).**
+
+| Class | All px | Confident px | Kept |
+|---|---|---|---|
+| tree | 12,594,363 | 11,598,776 | 92% |
+| shrub | 884,127 | 187,600 | 21% |
+| grass | 3,652,171 | 2,545,397 | 70% |
+| crop | 8,816,234 | 7,668,759 | 87% |
+| built | 382,793 | 361,040 | 94% |
+| bare | 4,981,733 | 4,125,573 | 83% |
+| snow | 2,035,112 | 1,474,589 | 72% |
+| water | 371,507 | 291,874 | 79% |
+| wetland | 65,063 | 2,493 | 4% |
+| mangrove | 54,483 | 54,483 | 100% |
+| moss | 683,502 | 683,502 | 100% |
+
+### 2.4 Metrics
+mIoU (primary), macro-F1 and OA, each on confident pixels and all pixels, with per-class
+IoU. Every arm is run with **two seeds** on the identical split; we report the mean and
+both seeds.
 
 ---
 
-## 3. Method: controlled encoder comparison
+## 3. Models and protocol
 
-The central question — *does EO pretraining beat ImageNet pretraining?* — is confounded
-whenever the encoders are wrapped in different decoders or trained under different
-regimes. We therefore run **three** comparisons on the **same T1 chips and identical
-splits**, deliberately spanning from confounded to controlled.
+**Backbone / head.** Prithvi-EO-2.0 300M ViT (via `terratorch`) with a UPerNet head over
+four encoder depths; fine-tuned end to end for 35 epochs (3 warm-up), batch 2 with gradient
+accumulation to an effective 8, AMP, cosine LR, on a single Kaggle T4.
 
-**(a) Mismatched-decoder full fine-tune** (the confounded baseline). Each backbone is
-fine-tuned end-to-end (class-balanced CrossEntropy, weights capped 8×, + Dice, AMP,
-cosine LR, 35 epochs). The EO FM is Prithvi-EO-2.0 (300M) with a lightweight progressive
-decoder; the generic baseline is an ImageNet U-Net (ResNet-34,
-`segmentation-models-pytorch`) with its native multi-scale **skip** decoder. Encoder and
-decoder both differ — exactly the confound gap #2 warns about.
+**Shared by every arm.** UPerNet head, LLRD, CE + Dice + Lovász losses and test-time
+augmentation. These are not ablated.
 
-**(b) Decoder-matched full fine-tune** (controlled). Both encoders are ViTs and both
-carry the **identical UPerNet-on-ViT decoder** — features from 4 transformer depths
-(forward hooks) → a resampled pyramid → PPM + top-down FPN — trained with CE + Dice +
-**Lovász-softmax**, **layer-wise LR decay**, and **test-time augmentation**. Now the
-*only* difference is the pretraining (Prithvi-EO-2.0 300M vs ImageNet ViT-B/16, both
-6-channel). This is also our strongest single model.
+**"Baseline" arm.** Pretrained encoder, fine-tuned, with the four additions below all off.
 
-**(c) Frozen-encoder probe** (controlled, capacity-limited). We **freeze** each encoder,
-precompute its feature map once, and train **the same** progressive `UpDecoder`
-(14→224, GroupNorm/GELU, no skips) on top. Because the encoder is frozen and the
-decoder is identical across backbones, the **only** difference is the pretraining. To
-make this affordable we cache each frozen encoder's features once (fp16, CPU) and train
-the decoder on the cache — ~25× faster than re-encoding every epoch, which also lets the
-600M model run: with no encoder optimizer states, **Prithvi-600M fits a 16 GB T4** for
-the first time. We compare **same-architecture ViTs** — Prithvi-EO-2.0 300M, Prithvi
-600M, and an ImageNet ViT-B/16 (`timm`, 6-channel patch-embed) — over **3 seeds**,
-reporting mean ± std.
+**"v3" arm.** Baseline plus four switchable additions: (a) auxiliary-band stem for the 11 non-optical bands,
+(b) confidence masking of low-agreement pixels *in training only*, (c) soft labels,
+(d) copy-paste augmentation of snow/wetland/mangrove/moss instances. The class-balanced sampler is **off** in all arms
+reported here.
 
-All compute: a 16 GB CPU-only laptop as control plane, Google Earth Engine for
-server-side data preparation, and a single free Kaggle **Tesla T4** for GPU training.
+**Reference arms.** *Random-init*: the same ViT, `pretrained=False`, fine-tuned. *Frozen*:
+pretrained encoder frozen, only head trained. All reference arms have every v3 addition
+off, so each differs from the baseline in exactly one thing.
+
+**Eval-mask protocol.** Training may mask low-agreement pixels; **evaluation never drops
+pixels at load time.** Low-agreement pixels are tagged and then scored in the all-pixels
+view and excluded in the confident view. This corrects an earlier pipeline in which the
+evaluation set itself changed with the arm (§7).
 
 ---
 
 ## 4. Results
 
-### 4.1 Representation quality (T2, frozen features + light head)
-| Representation | OA | macro-F1 |
-|---|---|---|
-| AlphaEarth FM embedding | 0.781 | **0.721** |
-| Hand-crafted seasonal time-series | 0.655 | 0.562 |
-| Both | 0.786 | 0.720 |
+### 4.1 What pretraining buys (main result)
 
-A learned FM embedding beats hand-crafted seasonal features by **+16 macro-F1 points**,
-and embedding-alone ≈ embedding+time-series — i.e. the FM representation already
-captures the seasonality that the hand-crafted features encode explicitly.
+**Table 2 — value of pretraining (mean of 2 seeds).**
 
-### 4.2 Mismatched-decoder full fine-tune (T1) — an apparent tie
-| Backbone (full fine-tune, *different* decoders) | macro-F1 | mIoU |
-|---|---|---|
-| Prithvi-EO-2.0 300M (simple decoder) | 0.593 | 0.451 |
-| ImageNet U-Net (ResNet-34, skip decoder) | 0.582–0.589 | 0.438–0.452 |
+| Model | mIoU conf. | mIoU all | macro-F1 conf. | macro-F1 all | OA conf. | OA all |
+|---|---|---|---|---|---|---|
+| Random-init ViT | 0.343 | 0.300 | 0.451 | 0.416 | 0.736 | 0.675 |
+| Frozen pretrained encoder | 0.402 | 0.343 | 0.507 | 0.463 | 0.773 | 0.711 |
+| Fine-tuned pretrained (baseline) | 0.448 | 0.388 | 0.550 | 0.509 | 0.819 | 0.761 |
+| v3 (fine-tuned, all additions) | 0.465 | 0.359 | 0.570 | 0.478 | 0.826 | 0.743 |
 
-The gap is within run-to-run noise: **the ranking flips across two 35-epoch runs**
-(unseeded ±0.01). It is tempting to conclude "the FM does not help under fine-tuning."
-That conclusion is wrong — and §4.3 shows why: the ImageNet model here carries a
-*stronger* decoder, which does the work its weaker encoder cannot. (An apparent +0.06 FM
-lead at 25 epochs was a separate convergence-speed artifact — the ImageNet model closes
-it with more training.)
+Seed-level mIoU (conf. / all): random-init 0.342, 0.344 / 0.300, 0.300; frozen 0.402,
+0.402 / 0.342, 0.344; baseline 0.445, 0.451 / 0.386, 0.389; v3 0.462, 0.469 / 0.358, 0.359.
 
-### 4.3 Decoder-matched full fine-tune (T1) — EO pretraining wins
-Give both ViTs the **identical** UPerNet decoder (+ Lovász, layer-wise LR decay, TTA):
+- Pretraining is worth **+0.105 mIoU** (confident) / **+0.088** (all) over random init.
+- Fine-tuning is worth **+0.046** / **+0.045** over a frozen encoder.
+- Both gaps are ≥ 10× the largest seed spread (< 0.005). This is the robust finding.
+- Random-init still reaches 0.343, i.e. the consensus labels carry real learnable
+  structure (and, given their origin, partly the structure of the label models). It is a
+  floor on label-model agreement, not a measure of ground truth.
 
-| Model (full fine-tune, *same* UPerNet decoder) | OA | macro-F1 | mIoU |
-|---|---|---|---|
-| **Prithvi-EO-2.0 300M** | **0.804** | **0.663** | **0.527** |
-| Prithvi-EO-2.0 600M (frozen encoder) | 0.772 | 0.618 | 0.481 |
-| ImageNet ViT-B/16 | 0.763 | 0.621 | 0.479 |
+### 4.2 v3 versus baseline: a trade-off, not a gain
+On confident pixels v3 is +0.017 mIoU over the baseline; on all pixels it is **−0.029**.
+The sign flips with the evaluation set, so no single "v3 is better" statement is
+supportable. The two views disagree because confidence masking removes the hard,
+ambiguous pixels from training (§4.3).
 
-Two results land here. **(1)** With encoder *and* decoder matched, **EO pretraining beats
-ImageNet by +0.042 macro-F1 / +0.048 mIoU** — the "tie" of §4.2 evaporates the moment the
-ImageNet backbone can no longer lean on a stronger decoder. **(2)** The controlled decoder
-is also simply better: it lifts Prithvi-300 from 0.593 (§4.2) to **0.663 macro-F1 /
-0.527 mIoU**, a +0.070 / +0.076 gain — the deployable India land-cover model of this study.
+### 4.3 Component ablation (leave-one-out from v3, 2 seeds)
 
-### 4.4 Frozen-encoder probe (T1) — EO pretraining wins, isolated
-| Encoder (frozen, same decoder, 3 seeds) | macro-F1 (mean ± std) | mIoU |
-|---|---|---|
-| **Prithvi-EO-2.0 600M** | **0.574 ± 0.010** | 0.435 ± 0.009 |
-| Prithvi-EO-2.0 300M | 0.559 ± 0.023 | 0.417 ± 0.025 |
-| ImageNet ViT-B/16 | 0.483 ± 0.005 | 0.345 ± 0.005 |
+**Table 3 — mIoU, mean of 2 seeds, Δ vs v3.**
 
-With the decoder held constant, **EO pretraining beats ImageNet by +0.08–0.09 macro-F1**
-— roughly 8× the seed std, unambiguously beyond noise. Same architecture, same decoder,
-so the gap is attributable to *pretraining* (EO masked-autoencoding vs ImageNet
-supervised). **Scale helps modestly and stabilizes**: 600M edges 300M and has tighter
-variance.
+| Arm | conf. | Δ | all | Δ |
+|---|---|---|---|---|
+| v3 (full) | 0.4652 | – | 0.3586 | – |
+| − aux stem | 0.4627 | −0.002 | 0.3573 | −0.001 |
+| − confidence masking | 0.4515 | −0.014 | 0.3860 | **+0.027** |
+| − soft labels | 0.4656 | +0.000 | 0.3585 | −0.000 |
+| − copy-paste | 0.4772 | **+0.012** | 0.3693 | +0.011 |
+| baseline (all off) | 0.4479 | −0.017 | 0.3877 | +0.029 |
 
-### 4.5 Reconciling: it was the decoder all along
-The three results tell one coherent story. A ResNet-U-Net's multi-scale **skip** decoder
-is expressive enough to *reconstruct* much of what a weaker encoder fails to provide, so
-in §4.2 it lets the ImageNet backbone reach parity — a **spurious tie born of a decoder
-confound**, not of encoder parity. Control the decoder and the confound vanishes: EO
-pretraining then wins in **both** the full-fine-tune regime (§4.3, **+0.042**) and the
-frozen regime (§4.4, **+0.08–0.09**). The frozen probe, though capacity-limited (its
-absolute scores sit below full fine-tuning), isolates the cause most cleanly — identical
-frozen features, identical decoder, only the pretraining differs.
+- **Aux stem and soft labels: no measurable effect** (|Δ| ≤ 0.002 on both views).
+- **Confidence masking** moves the two views in opposite directions (−0.014 / +0.027): it
+  is a **specialisation to confident pixels**, paid for on ambiguous ones.
+- **Removing copy-paste helps** (+0.012 / +0.011), but the two seeds disagree
+  (conf. 0.4845 vs 0.4700; all 0.3777 vs 0.3609), so we do not claim it from two seeds.
+- Two seeds cannot establish effects below ≈ 0.01; every individual Δ in this table
+  should be read with that limit.
 
-> **Headline:** on a decoder-controlled, architecture-matched comparison, an EO
-> foundation model beats a generic ImageNet backbone for India land cover in **both**
-> the fine-tuned (+0.042 macro-F1) and frozen (+0.08) regimes. The widely-reported "tie
-> under fine-tuning" is an artifact of *mismatched decoders* — a cautionary tale for
-> FM-vs-generic benchmarking.
+### 4.4 Per-class IoU
 
-### 4.6 Supporting India results (same lab, same compute)
-- **Land cover (point probe):** AlphaEarth + XGBoost OA 0.86 / macro-F1 0.80; targeted
-  regional sampling rescues rare classes (mangrove F1 0.00→0.98, snow 0.84→1.00).
-- **Flood susceptibility (Assam, static pre-event features):** flood-class F1 0.56;
-  the annual embedding (F1 0.51) ≫ terrain (0.01) — it encodes flood-prone geomorphology.
-- **Groundwater (Punjab/NW India):** predicting GRACE storage trend, R² lifts
-  0.34 → **0.89** with the embedding; downscaling 110 km → 1.5 km at spatial-CV
-  R² 0.924; Punjab −0.86 cm/yr, structural overdraft (not drought) confirmed
-  cross-mission and against CGWB wells.
+**Table 4 — IoU on confident pixels, mean of 2 seeds.**
+
+| Class | Random-init | Frozen | Baseline | v3 |
+|---|---|---|---|---|
+| tree | 0.834 | 0.859 | 0.881 | 0.893 |
+| shrub | 0.074 | 0.143 | 0.155 | 0.301 |
+| grass | 0.357 | 0.388 | 0.447 | 0.480 |
+| crop | 0.712 | 0.823 | 0.855 | 0.884 |
+| built | 0.283 | 0.613 | 0.716 | 0.724 |
+| bare | 0.307 | 0.352 | 0.496 | 0.475 |
+| snow | 0.358 | 0.354 | 0.397 | 0.373 |
+| water | 0.649 | 0.706 | 0.741 | 0.756 |
+| wetland | 0.000 | 0.000 | 0.000 | 0.013 |
+| mangrove | 0.000 | 0.003 | 0.001 | 0.015 |
+| moss | 0.196 | 0.180 | 0.236 | 0.202 |
+
+Pretraining's gain is concentrated in **built** (0.28 → 0.72), **crop** (0.71 → 0.86) and
+**grass/bare**; classes with weak or ambiguous labels (snow, moss, shrub) barely move.
+v3's mIoU gain on confident pixels comes largely from **shrub** (0.155 → 0.301), a class
+for which only 21% of pixels are confident — a plausible by-product of evaluating on the
+residue that confidence masking leaves, rather than a better shrub model (on all pixels
+shrub is 0.293 for baseline vs 0.209 for v3).
+
+### 4.5 Rare classes are not evaluable
+Wetland (2,493 confident pixels; ~1 chip) and mangrove (54,483 px; ~1 chip) score IoU ≤
+0.015 in every arm. A single chip makes IoU a measure of one scene, so these two classes
+contribute noise to mIoU, and any rare-class intervention (the copy-paste above) cannot be
+validated on them. They are retained for completeness, and mIoU is reported with all 11
+classes so the gap is visible rather than hidden.
 
 ---
 
 ## 5. Discussion
 
-**For practitioners.** Pick the EO FM in *either* regime — the representation gain is
-real whether you freeze and serve features (~+0.08 macro-F1, the resource-constrained /
-few-shot / feature-serving case a sovereign national model targets) or fully fine-tune
-(~+0.04). The one caveat is a benchmarking one: **do not compare an FM against a generic
-backbone that carries a different decoder** — a stronger decoder on the generic side
-manufactures a false tie. Match the decoder (and ideally the architecture) or the
-comparison measures your decoder, not your encoder.
+**Use a pretrained FM and fine-tune it.** This is the one result that is large, stable
+across seeds, and holds on both evaluation views (+0.09–0.10 over random init, +0.045 over
+frozen). A shared pretrained encoder is a defensible investment; the "more training
+tricks" layer on top of it is not demonstrated here.
 
-**For sovereign-FM strategy.** The through-line across land cover, flood, and
-groundwater is that the **representation is the dominant signal** — lightweight heads on
-a good embedding solve diverse Indian problems, while the head architecture barely
-matters. This is the empirical case for investing in a sovereign representation
-(Indian sensors: NISAR, EOS-04, INSAT, Resourcesat; in-situ: CGWB/CWC/IMD) rather than
-in bespoke per-task models — and the frozen-probe result is exactly the regime such a
-shared national embedding would be deployed in.
+**Report both pixel sets.** On this data the evaluation-set choice changes mIoU by
+0.06–0.08, larger than every method delta except pretraining. With consensus labels a
+single number can be made to favour either design simply by choosing the mask.
 
-**On honesty as method.** Our own benchmark first produced a "tie" that seemed to
-*disconfirm* the FM's value — and only tightening the protocol (matching the decoder,
-then freezing the encoder) revealed the tie as our own confound. We report the tie, its
-cause, and its resolution rather than only the final favorable number. The uncomfortable
-intermediate result was a feature of the protocol, not a failure of it — and a reminder
-that many published FM-vs-generic ties may be decoder artifacts.
+**Do not read the v3 recipe as a method contribution.** Its only consistent effect is the
+confident/ambiguous trade-off; the remaining components are null at our resolution.
 
 ---
 
 ## 6. Limitations
 
-- **AlphaEarth is a global, closed embedding** (Google); we use it as the strong
-  baseline-to-beat and as evidence the sovereignty argument matters, not as our model.
-- **Groundwater is coarse (~110 km GRACE) and correlational**; the downscaling assumes
-  scale-invariance and is validated against wells only at the trend level.
-- **Frozen-probe scores (~0.56) are below decoder-matched fine-tuning (0.663)** by
-  construction — the probe isolates encoder quality, not the deployable ceiling; the
-  fine-tuned decoder-matched model is the number to deploy.
-- **Two backbones per family.** Clay and TerraMind were attempted but skipped on
-  registry/API mismatches; a broader FM roster would strengthen generality.
-- **Single T4, one dataset year (2021 embeddings; per-task S1/S2 windows).** Broader
-  temporal and multi-sensor evaluation is future work.
-- **Label noise** (WorldCover↔Dynamic World 66% agreement) bounds achievable scores;
-  we report against it rather than around it.
+- **Weak labels.** All labels derive from other models (Dynamic World, ESRI, WorldCover,
+  WorldCereal). We have no independent human-labelled reference for dense land cover;
+  scores are agreement with consensus, not accuracy. This is the main scientific weakness.
+- **Two seeds, one split.** Deltas below ≈ 0.01 are not resolved; split-to-split variance
+  is untested.
+- **One backbone family.** No ImageNet/ResNet baseline and no other EO FM (Clay,
+  TerraMind, DOFA, SatMAE) on this split. The v1 draft's ImageNet-ViT comparison is not
+  reproduced here (§7).
+- **Rare classes** (wetland, mangrove) are unmeasurable; unbalanced-sampler and 17-band
+  versus RGB comparisons have not been rerun on the spatial split.
+- **Single T4, one reference year.** No temporal or multi-sensor evaluation.
+- **Selection.** No hyper-parameter search per arm; arms share one configuration, which
+  can favour the arm it was developed for (v3).
 
 ---
 
-## 7. Reproducibility
+## 7. Corrections to earlier results
 
-Benchmark, splits, and harness are released under `data/bench_v1/` with content hashes
-(T1 zip SHA `bac1d6d3`; T2 Parquet SHA `bffd5fbc`) and a manifest per task. The
-evaluation CLI (`bench_v1.py`: `verify-zones / build-t2 / pull-cgwb / validate-gw /
-lc-anchor / lc-fieldtruth / compare-t2 / eval-t2`) reproduces every table. Three Kaggle
-notebooks run end-to-end on a free T4 with a numpy-safe install shim:
-`benchmark_backbones.ipynb` (mismatched-decoder fine-tune), `probe_headtohead.ipynb`
-(frozen probe), and `prithvi_seg_v2.ipynb` (decoder-matched fine-tune — the UPerNet /
-Lovász / LLRD / TTA model). Compute footprint: laptop control plane + GEE server-side +
-one T4 (~70 min frozen-probe grid; ~4.7 h for the decoder-matched sweep).
+We discovered and corrected the following; they are stated in full because each changed a
+conclusion.
 
----
-
-## 8. Conclusion
-
-On a stratified, spatially-disjoint, ground-truth-anchored India benchmark, an EO
-foundation model beats a generic ImageNet backbone for land cover in **both** the
-fine-tuned (+0.042 macro-F1) and frozen (+0.08–0.09) regimes — **once the decoder is
-matched**. The widely-reported "tie under fine-tuning" reproduces here only with a
-*mismatched* decoder, and dissolves under control: it is a benchmarking artifact, not a
-property of the encoders. The decoder-matched model reaches **0.663 macro-F1 / 0.804 OA**
-on Indian land cover on free compute. The finding both refutes the "generic is just as
-good" claim and strengthens — with a clean mechanistic caveat for future benchmarks —
-the case for a sovereign Indian foundation model.
+1. **Non-spatial split (v1 draft).** The v1 land-cover numbers (0.663 macro-F1 / 0.527
+   mIoU, an "EO beats ImageNet by +0.042 / +0.08" claim, the "0.86 OA" point-probe
+   results) were computed on a chip-level, zone-stratified split without coordinates.
+   They are **withdrawn** and not comparable to the numbers here; on the spatial split the
+   comparable baseline is 0.388–0.448 mIoU. The ImageNet-ViT and decoder-matching claims
+   are untested on the spatial split.
+2. **Eval-mask confound.** An earlier pipeline masked low-agreement pixels at load time
+   for *every* split, so a model trained with confidence masking was scored on a
+   different, easier pixel set than the baseline. We had reported a +0.074 mIoU v3 gain,
+   a "confidence masking carries the model" attribution, a −0.109 ablation effect and that
+   "half the gain was leakage"; all four are **retracted**. With a fixed, identical
+   evaluation set the v3 effect is +0.017 / −0.029 (§4.2).
+3. **Run bookkeeping.** An exporter ran as 13 concurrent writers and produced chips with
+   conflicting coordinates; the chip set was rebuilt behind a directory lock before any
+   number reported here. Out-of-memory retries that pinned a failed model alive were fixed
+   (retry outside the exception handler plus explicit purge).
 
 ---
 
-*Appendix material available in-repo: agro-zone construction, per-class confusion
-matrices, CGWB well-trend maps, and the full data-engineering DAG.*
+## 8. Reproducibility
+
+Code is in `bharat-eo-lab/`: split construction (`src/finalize_dsv2_spatial.py`), the
+Earth Engine exporter (`src/export_dataset_v2.py`), and the Kaggle kernels
+(`notebooks/kaggle_v3_spatial/`, builders `build_spatial.py`, `build_eval.py`,
+`build_abl.py`, `build_bl.py`). Raw per-seed JSONs and logs for every arm are in
+`outputs/spatial_v3_results/`. Chip arrays and raw CSVs are not in git (regenerable with
+the exporter / on Kaggle as `bharat-eo-chips-dsv2-sp`). Compute: a 16 GB laptop for
+control, Earth Engine for export, one T4 per kernel (~2.5 h for the random-init arm).
+A release licence and a dataset card still need to be written.
+
+---
+
+## 9. Conclusion
+
+On a leakage-controlled India land-cover split with consensus labels, a pretrained EO
+foundation model fine-tuned end to end reaches 0.448 mIoU on confident pixels (0.388 on
+all), +0.105 (+0.088) over random initialisation and +0.046 over a frozen encoder, with
+seed spread under 0.005. A four-part training recipe adds at most a confident-pixel
+specialisation and loses on ambiguous pixels; wetland and mangrove cannot be evaluated.
+The immediate work that would make this a research paper rather than a benchmark release
+is independent ground truth for dense land cover, rare-class data (e.g. Global Mangrove
+Watch, Dynamic World flooded vegetation), and a second backbone family on the same split.

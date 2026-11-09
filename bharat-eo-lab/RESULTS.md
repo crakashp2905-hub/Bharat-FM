@@ -1,3 +1,5 @@
+> **Note (2026-11):** the Prithvi land-cover rows (6, 6b) come from a non-spatial split and are withdrawn. See `docs/PREPRINT.md` and `outputs/spatial_v3_results/` for spatial-split results.
+
 # Bharat-EO-Lab — Empirical Results
 
 Five Indian geospatial tasks, all run on a 16 GB CPU-only laptop + free Google
