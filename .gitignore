@@ -1,0 +1,30 @@
+# environments / deps
+.venv/
+node_modules/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# backups
+*.bak
+*.pre_auxb
+
+# large data (distribute via Kaggle datasets, not git)
+*.zip
+*.npy
+*.npz
+*.tif
+*.pt
+*.pth
+*.ckpt
+bharat-eo-lab/data/chips/
+bharat-eo-lab/data/**/img/
+bharat-eo-lab/data/**/aux*/
+
+# secrets
+kaggle.json
+*.token
+.env
+
+# regenerable raw exports
+bharat-eo-lab/data/raw/

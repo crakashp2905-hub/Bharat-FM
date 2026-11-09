@@ -1,0 +1,18 @@
+# bharat-eo-lab — core dependencies (CPU-only, laptop-feasible)
+earthengine-api>=1.7
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.4
+xgboost>=2.1
+imbalanced-learn>=0.12
+matplotlib>=3.8
+geopandas>=1.0
+folium>=0.16
+pyarrow>=15.0
+
+# Optional, for the GPU notebook (notebooks/finetune_gpu.py) — install on Kaggle/Colab:
+#   torch
+# Optional, for real InSAR (notebooks/insar_hyp3_punjab.py) — needs NASA Earthdata login:
+#   hyp3_sdk
+#   asf_search
+#   rasterio

@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "task": "T1_landcover_segmentation",
+  "n": 5271,
+  "bands": 8,
+  "chip": 224,
+  "splits": {
+    "train": 3741,
+    "test": 806,
+    "val": 724
+  },
+  "sha256": "bac1d6d39d0a1a9e"
+}
